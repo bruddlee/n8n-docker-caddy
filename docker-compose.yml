@@ -1,0 +1,70 @@
+version: "3.7"
+
+volumes:
+  caddy_data:
+    external: true
+  caddy_config:
+  db_storage:
+  n8n_storage:
+
+services:
+  postgres:
+      image: postgres:11
+      restart: always
+      environment:
+        - POSTGRES_USER
+        - POSTGRES_PASSWORD
+        - POSTGRES_DB
+        - POSTGRES_NON_ROOT_USER
+        - POSTGRES_NON_ROOT_PASSWORD
+      volumes:
+        - db_storage:/var/lib/postgresql/data
+        - ./init-data.sh:/docker-entrypoint-initdb.d/init-data.sh
+      healthcheck:
+        test: ['CMD-SHELL', 'pg_isready -h localhost -U ${POSTGRES_USER} -d ${POSTGRES_DB}']
+        interval: 5s
+        timeout: 5s
+        retries: 10
+  caddy:
+    image: caddy:latest
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ${DATA_FOLDER}/caddy_data:/data
+      - ${DATA_FOLDER}/caddy_config:/config
+      - ${DATA_FOLDER}/caddy_config/Caddyfile:/etc/caddy/Caddyfile
+  n8n:
+    image: n8nio/n8n
+    restart: always
+    ports:
+      - 5678:5678
+    environment:
+      - DB_TYPE=postgresdb
+      - DB_POSTGRESDB_HOST=postgres
+      - DB_POSTGRESDB_PORT=5432
+      - DB_POSTGRESDB_DATABASE=${POSTGRES_DB}
+      - DB_POSTGRESDB_USER=${POSTGRES_NON_ROOT_USER}
+      - DB_POSTGRESDB_PASSWORD=${POSTGRES_NON_ROOT_PASSWORD}
+      - N8N_BASIC_AUTH_ACTIVE=true
+      - N8N_BASIC_AUTH_USER
+      - N8N_BASIC_AUTH_PASSWORD
+      - N8N_HOST=${SUBDOMAIN}.${DOMAIN_NAME}
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=https
+      - NODE_ENV=production
+      - EXECUTIONS_PROCESS=main
+      - N8N_EMAIL_MODE=smtp
+      - N8N_SMTP_HOST
+      - N8N_SMTP_USER
+      - N8N_SMTP_PASS
+      - N8N_SMTP_SENDER
+      - N8N_SMTP_SSL=true
+      - WEBHOOK_URL=https://${SUBDOMAIN}.${DOMAIN_NAME}/
+      - GENERIC_TIMEZONE=${GENERIC_TIMEZONE}
+      - N8N_HIRING_BANNER_ENABLED=false
+      - N8N_PERSONALIZATION_ENABLED=false
+    volumes:
+      - ${DATA_FOLDER}/local_files:/files
+      - ${DATA_FOLDER}/.n8n:/home/node/.n8n
